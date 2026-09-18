@@ -157,7 +157,7 @@ button { color: inherit; }
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  align-items: end;
+  align-items: flex-end;
   padding-right: 6px;
   font-size: 10px;
   color: #555;
@@ -174,7 +174,7 @@ button { color: inherit; }
 .barCol {
   display: flex;
   flex-direction: column;
-  justify-content: end;
+  justify-content: flex-end;
   align-items: center;
   position: relative;
   min-width: 0;
@@ -185,7 +185,7 @@ button { color: inherit; }
   height: 185px;
   display: flex;
   justify-content: center;
-  align-items: end;
+  align-items: flex-end;
 }
 .barTotal { position: absolute; bottom: 0; width: 100%; background: #d5d5d5; }
 .barDone { position: absolute; bottom: 0; width: 100%; background: #111; }

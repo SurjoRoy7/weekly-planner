@@ -47,3 +47,7 @@ npm start
 This version saves planner data in the browser with `localStorage`, so no database account is required. Data is specific to that browser/device.
 
 Cloud accounts and cross-device synchronization need a backend such as Supabase or Firebase. They are intentionally not faked in this build because real authentication and cloud sync require your own project credentials.
+
+
+## Deployment note
+This project uses Next.js 15.5.24 (Maintenance LTS security-patched release).
