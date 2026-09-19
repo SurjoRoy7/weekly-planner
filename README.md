@@ -1,23 +1,22 @@
-# Weekly Planner
+# Weekly Planner — Focus Workspace Edition
 
-A black-and-white gamified weekly planner and habit tracker recreated from the supplied reference video.
+A Next.js weekly planner inspired by a monochrome spreadsheet dashboard, redesigned to remove the repetitive seven-column task section and replace it with a focused daily workspace.
 
-## Included in this build
+## What changed in this version
 
-- Monday–Sunday planner with real calendar dates
-- Previous / next week navigation and a Today shortcut
-- A separate saved record for every opened week
-- History modal with completion summaries and jump-to-week controls
-- Habit tracker with editable names, add/delete, checkboxes, and progress bars
-- Daily tasks with editable labels, add/delete, and completion checkboxes
-- Overall weekly chart and completion donut
-- Daily task completion donuts
-- XP system: +10 XP per completed task and +5 XP per completed habit check
-- Level progression every 500 XP
-- Best perfect-day streak across saved weeks
-- Automatic local persistence with localStorage
-- Responsive desktop/mobile layout
-- Web app manifest + service worker for PWA/installable behavior
+- Replaced seven full daily task cards with a compact Monday–Sunday day selector.
+- Added a large selected-day workspace with one task list at a time.
+- Overall chart bars are now clickable and open that day.
+- Added quick task entry: type a task and press Enter.
+- Added task priority: High, Medium, Normal.
+- Added task categories: General, Work, Study, Health, Personal, Errand.
+- Added an 80% daily goal indicator.
+- Added current goal streak and best goal streak.
+- Added level progress and XP-to-next-level information.
+- Added upcoming unfinished tasks from later in the week.
+- Added weekly insights: strongest day, day needing attention, most missed habit, task completion, and comparison with the previous saved week.
+- Kept week history, local browser saving, editable habits, and PWA files.
+- Existing v2 localStorage data remains compatible; older tasks simply default to General / Normal when shown.
 
 ## Run locally
 
@@ -26,28 +25,12 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
+Then open `http://localhost:3000`.
 
-## Production build
+## Deploy to Vercel
 
-```bash
-npm run build
-npm start
-```
+Import the repository into Vercel. The framework should be detected as Next.js automatically. No environment variables are required for this local-storage version.
 
-## Deploy on Vercel
+## Storage
 
-1. Put this project in a GitHub repository.
-2. Import that repository into Vercel.
-3. Vercel should detect Next.js automatically.
-4. Deploy with the default settings.
-
-## Data storage
-
-This version saves planner data in the browser with `localStorage`, so no database account is required. Data is specific to that browser/device.
-
-Cloud accounts and cross-device synchronization need a backend such as Supabase or Firebase. They are intentionally not faked in this build because real authentication and cloud sync require your own project credentials.
-
-
-## Deployment note
-This project uses Next.js 15.5.24 (Maintenance LTS security-patched release).
+Planner data is stored in the browser using `localStorage` under `weekly-planner-game-v2`. It does not sync across devices yet.
