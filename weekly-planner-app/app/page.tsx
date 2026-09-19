@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 
 type Priority = "high" | "medium" | "normal";
 type Category = "General" | "Work" | "Study" | "Health" | "Personal" | "Errand";
-type ViewName = "today" | "dashboard" | "history" | "settings";
 
 type Habit = {
   id: string;
@@ -32,13 +31,8 @@ type WeekData = {
   days: DayPlan[];
 };
 
-type PlannerSettings = {
-  dailyGoal: number;
-};
-
 type AppState = {
   weeks: Record<string, WeekData>;
-  settings?: PlannerSettings;
 };
 
 type DayStat = {
@@ -55,7 +49,7 @@ const LEGACY_STORAGE_KEY = "weekly-planner-game-v1";
 const XP_PER_TASK = 10;
 const XP_PER_HABIT = 5;
 const XP_PER_LEVEL = 500;
-const DEFAULT_DAILY_GOAL = 80;
+const DAILY_GOAL = 80;
 const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const dayShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const categories: Category[] = ["General", "Work", "Study", "Health", "Personal", "Errand"];
@@ -120,6 +114,11 @@ function startOfMonday(date: Date) {
 
 function weekKeyFromDate(date: Date) {
   return toISODate(startOfMonday(date));
+}
+
+function formatDayDate(iso: string) {
+  const d = fromISODate(iso);
+  return `${`${d.getDate()}`.padStart(2, "0")}.${`${d.getMonth() + 1}`.padStart(2, "0")}.${d.getFullYear()}`;
 }
 
 function formatLongDate(iso: string) {
@@ -238,21 +237,16 @@ function Donut({ value, size = 126 }: { value: number; size?: number }) {
 
 export default function Home() {
   const initialWeekKey = weekKeyFromDate(new Date());
-  const [app, setApp] = useState<AppState>({
-    weeks: { [initialWeekKey]: demoWeek(initialWeekKey) },
-    settings: { dailyGoal: DEFAULT_DAILY_GOAL },
-  });
+  const [app, setApp] = useState<AppState>({ weeks: { [initialWeekKey]: demoWeek(initialWeekKey) } });
   const [currentWeekKey, setCurrentWeekKey] = useState(initialWeekKey);
   const [selectedDay, setSelectedDay] = useState(() => {
     const jsDay = new Date().getDay();
     return jsDay === 0 ? 6 : jsDay - 1;
   });
-  const [activeView, setActiveView] = useState<ViewName>("today");
   const [quickTask, setQuickTask] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [notice, setNotice] = useState("");
-
-  const dailyGoal = app.settings?.dailyGoal ?? DEFAULT_DAILY_GOAL;
 
   useEffect(() => {
     try {
@@ -260,21 +254,17 @@ export default function Home() {
       if (saved) {
         const parsed = JSON.parse(saved) as AppState;
         if (parsed?.weeks && Object.keys(parsed.weeks).length) {
-          const normalized: AppState = {
-            ...parsed,
-            settings: parsed.settings ?? { dailyGoal: DEFAULT_DAILY_GOAL },
-          };
-          if (!normalized.weeks[initialWeekKey]) {
-            const recentKey = Object.keys(normalized.weeks).sort().at(-1) ?? initialWeekKey;
-            const habits = normalized.weeks[recentKey]?.habits.map((habit) => habit.name) ?? starterHabits;
-            normalized.weeks = { ...normalized.weeks, [initialWeekKey]: blankWeek(initialWeekKey, habits) };
+          setApp(parsed);
+          if (!parsed.weeks[initialWeekKey]) {
+            const recentKey = Object.keys(parsed.weeks).sort().at(-1) ?? initialWeekKey;
+            const habits = parsed.weeks[recentKey]?.habits.map((habit) => habit.name) ?? starterHabits;
+            setApp((prev) => ({ ...prev, weeks: { ...prev.weeks, [initialWeekKey]: blankWeek(initialWeekKey, habits) } }));
           }
-          setApp(normalized);
           setCurrentWeekKey(initialWeekKey);
         }
       } else {
         const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-        if (legacy) setNotice("Your previous local planner is untouched; this version uses the newer history-safe data format.");
+        if (legacy) setNotice("Your previous local planner is untouched; this upgraded version uses a new history-safe data format.");
       }
     } catch {
       setNotice("Local data could not be loaded, so the demo week is being used.");
@@ -288,7 +278,9 @@ export default function Home() {
   }, [app, loaded]);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
   }, []);
 
   useEffect(() => {
@@ -296,7 +288,7 @@ export default function Home() {
     const todayIndex = savedWeek?.days.findIndex((day) => day.date === toISODate(new Date())) ?? -1;
     setSelectedDay(todayIndex >= 0 ? todayIndex : 0);
     setQuickTask("");
-  }, [currentWeekKey, app.weeks]);
+  }, [currentWeekKey]);
 
   const week = app.weeks[currentWeekKey] ?? blankWeek(currentWeekKey);
   const currentStats = useMemo(() => getWeekStats(week), [week]);
@@ -316,7 +308,7 @@ export default function Home() {
       stats.dayStats.forEach((stat, index) => {
         taskDone += stat.taskDone;
         habitDone += stat.habitDone;
-        if (stat.total > 0 && percent(stat.done, stat.total) >= dailyGoal) successfulDates.push(savedWeek.days[index].date);
+        if (stat.total > 0 && percent(stat.done, stat.total) >= DAILY_GOAL) successfulDates.push(savedWeek.days[index].date);
       });
     });
 
@@ -346,7 +338,7 @@ export default function Home() {
     }
 
     return { xp, level, levelXp, bestStreak, currentStreak, completed: taskDone + habitDone };
-  }, [app.weeks, dailyGoal]);
+  }, [app.weeks]);
 
   const history = useMemo(
     () => Object.keys(app.weeks).sort().reverse().map((key) => ({ key, ...getWeekStats(app.weeks[key]) })),
@@ -362,9 +354,6 @@ export default function Home() {
       .sort((a, b) => b.missed - a.missed)[0];
     const taskDone = dayStats.reduce((sum, stat) => sum + stat.taskDone, 0);
     const taskTotal = dayStats.reduce((sum, stat) => sum + stat.taskTotal, 0);
-    const habitDone = dayStats.reduce((sum, stat) => sum + stat.habitDone, 0);
-    const habitTotal = dayStats.reduce((sum, stat) => sum + stat.habitTotal, 0);
-    const goalDays = pcts.filter((value) => value >= dailyGoal).length;
     const previousKey = toISODate(addDays(fromISODate(currentWeekKey), -7));
     const previousWeek = app.weeks[previousKey];
     const previousPct = previousWeek ? getWeekStats(previousWeek).pct : null;
@@ -374,13 +363,10 @@ export default function Home() {
       missedHabit,
       taskDone,
       taskTotal,
-      habitDone,
-      habitTotal,
-      goalDays,
       previousPct,
       delta: previousPct === null ? null : overallPct - previousPct,
     };
-  }, [app.weeks, currentWeekKey, dailyGoal, dayStats, overallPct, week.habits]);
+  }, [app.weeks, currentWeekKey, dayStats, overallPct, week.habits]);
 
   const upcoming = useMemo(() => {
     const rows: { day: string; date: string; task: Task }[] = [];
@@ -424,7 +410,6 @@ export default function Home() {
 
   function goToday() {
     ensureAndOpenWeek(weekKeyFromDate(new Date()));
-    setActiveView("today");
   }
 
   function toggleTask(dayIndex: number, taskId: string) {
@@ -511,82 +496,125 @@ export default function Home() {
     setApp((prev) => ({ ...prev, weeks: { ...prev.weeks, [currentWeekKey]: demoWeek(currentWeekKey) } }));
   }
 
-  function updateDailyGoal(value: number) {
-    const safe = Math.max(50, Math.min(100, value));
-    setApp((prev) => ({ ...prev, settings: { ...(prev.settings ?? { dailyGoal: DEFAULT_DAILY_GOAL }), dailyGoal: safe } }));
-  }
-
-  function exportBackup() {
-    const blob = new Blob([JSON.stringify(app, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `weekly-planner-backup-${toISODate(new Date())}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  function openHistoryWeek(key: string) {
-    setCurrentWeekKey(key);
-    setActiveView("dashboard");
-  }
-
-  const renderWeekToolbar = activeView === "today" || activeView === "dashboard";
-
   return (
     <main className="pageShell">
-      <header className="topbar appTopbar">
+      <header className="topbar">
         <div className="brandBlock">
           <h1>Weekly Planner</h1>
           <p>Turn your goals into a game.</p>
         </div>
 
-        <nav className="appNav" aria-label="Main navigation">
-          {(["today", "dashboard", "history", "settings"] as ViewName[]).map((view) => (
-            <button key={view} className={activeView === view ? "active" : ""} onClick={() => setActiveView(view)}>
-              {view[0].toUpperCase() + view.slice(1)}
-            </button>
-          ))}
-        </nav>
-
-        <div className="gameStats compactStats" aria-label="Gamification stats">
+        <div className="gameStats" aria-label="Gamification stats">
           <div className="statChip"><span>Level</span><b>{allTime.level}</b></div>
           <div className="statChip wideChip">
-            <span>XP · {allTime.levelXp}/{XP_PER_LEVEL}</span>
+            <span>XP · {allTime.levelXp}/{XP_PER_LEVEL} to next level</span>
             <b>{allTime.xp.toLocaleString()}</b>
             <i><em style={{ width: `${percent(allTime.levelXp, XP_PER_LEVEL)}%` }} /></i>
           </div>
-          <div className="statChip streakChip"><span>Streak</span><b>{allTime.currentStreak}d <small>best {allTime.bestStreak}d</small></b></div>
+          <div className="statChip streakChip"><span>Goal streak</span><b>{allTime.currentStreak}d <small>best {allTime.bestStreak}d</small></b></div>
+        </div>
+
+        <div className="topActions">
+          <button className="ghostBtn" onClick={() => setHistoryOpen(true)}>History</button>
+          <button className="ghostBtn" onClick={loadDemoWeek}>Demo</button>
+          <button className="resetBtn" onClick={resetCurrentWeek}>Reset week</button>
         </div>
       </header>
 
-      {renderWeekToolbar && (
-        <section className="weekToolbar" aria-label="Week navigation">
-          <button className="navBtn" onClick={() => moveWeek(-1)} aria-label="Previous week">←</button>
-          <div className="weekIdentity">
-            <span>WEEK {getISOWeekNumber(currentWeekKey)}</span>
-            <strong>{formatWeekRange(currentWeekKey)}</strong>
-          </div>
-          <button className="todayBtn" onClick={goToday}>Today</button>
-          <button className="navBtn" onClick={() => moveWeek(1)} aria-label="Next week">→</button>
-        </section>
-      )}
+      <section className="weekToolbar" aria-label="Week navigation">
+        <button className="navBtn" onClick={() => moveWeek(-1)} aria-label="Previous week">←</button>
+        <div className="weekIdentity">
+          <span>WEEK {getISOWeekNumber(currentWeekKey)}</span>
+          <strong>{formatWeekRange(currentWeekKey)}</strong>
+        </div>
+        <button className="todayBtn" onClick={goToday}>Today</button>
+        <button className="navBtn" onClick={() => moveWeek(1)} aria-label="Next week">→</button>
+      </section>
 
       {notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice("")}>×</button></div>}
 
-      {activeView === "today" && (
-        <section className="sheet appPageSheet">
-          <div className="pageIntro compactIntro">
-            <div>
-              <span>TODAY / DAILY FOCUS</span>
-              <h2>{formatLongDate(selectedPlan.date)}</h2>
+      <section className="sheet">
+        <div className="dashboardRow">
+          <div className="overallPanel">
+            <div className="sectionTitle">Overall Progress</div>
+            <div className="overallBody">
+              <div className="chartWrap">
+                <div className="chartGrid">
+                  {[20, 16, 12, 8, 4, 0].map((n) => <span key={n}>{n}</span>)}
+                </div>
+                <div className="bars">
+                  {dayStats.map((stat, index) => {
+                    const max = Math.max(20, ...dayStats.map((x) => x.total));
+                    const doneHeight = stat.total ? Math.max(2, (stat.done / max) * 100) : 0;
+                    const totalHeight = stat.total ? Math.max(doneHeight, (stat.total / max) * 100) : 0;
+                    return (
+                      <button
+                        className={`barCol ${selectedDay === index ? "selected" : ""}`}
+                        key={dayShort[index]}
+                        title={`${stat.done}/${stat.total} completed · open ${dayNames[index]}`}
+                        onClick={() => setSelectedDay(index)}
+                      >
+                        <div className="barTrack">
+                          <div className="barTotal" style={{ height: `${totalHeight}%` }} />
+                          <div className="barDone" style={{ height: `${doneHeight}%` }} />
+                        </div>
+                        <strong>{dayShort[index]}</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="overallDonut">
+                <Donut value={overallPct} size={170} />
+                <div className="completedText">{overallDone} / {overallTotal} completed</div>
+                <small>{allTime.completed.toLocaleString()} all-time completions</small>
+              </div>
             </div>
-            <p>One day at a time. Finish what matters, then move on.</p>
           </div>
 
-          <nav className="dayTabs topDayTabs" aria-label="Choose day">
+          <div className="habitPanel">
+            <div className="sectionTitle titleWithAction">
+              <span>Habit tracker</span>
+              <button onClick={addHabit}>+ habit</button>
+            </div>
+            <div className="habitScroll">
+              <div className="habitHeader habitGrid">
+                <span>Habit</span>
+                {dayShort.map((day) => <span key={day}>{day}</span>)}
+                <span>Progress</span>
+                <span aria-hidden="true" />
+              </div>
+              <div className="habitRows">
+                {week.habits.length === 0 && <div className="emptyState">No habits yet. Add your first habit above.</div>}
+                {week.habits.map((habit) => {
+                  const completed = habit.days.filter(Boolean).length;
+                  const pct = percent(completed, 7);
+                  return (
+                    <div className="habitGrid habitRow" key={habit.id}>
+                      <input className="inlineText habitName" value={habit.name} onChange={(e) => renameHabit(habit.id, e.target.value)} aria-label="Habit name" />
+                      {habit.days.map((checked, index) => (
+                        <label className="tinyCheck" key={index} title={`${habit.name} on ${dayNames[index]}`}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleHabit(habit.id, index)} />
+                          <span />
+                        </label>
+                      ))}
+                      <div className="progressCell">
+                        <div className="progressBar"><i style={{ width: `${pct}%` }} /></div>
+                        <b>{pct}%</b>
+                      </div>
+                      <button className="deleteRowBtn" onClick={() => deleteHabit(habit.id)} title="Delete habit" aria-label={`Delete ${habit.name}`}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section className="focusSection">
+          <div className="sectionTitle">Daily Workspace</div>
+
+          <nav className="dayTabs" aria-label="Choose day">
             {week.days.map((day, index) => {
               const stat = dayStats[index];
               const pct = percent(stat.done, stat.total);
@@ -605,8 +633,8 @@ export default function Home() {
             })}
           </nav>
 
-          <div className="todayGrid">
-            <article className="dailyWorkspace standaloneWorkspace">
+          <div className="workspaceGrid">
+            <article className="dailyWorkspace">
               <header className="dailyHero">
                 <div className="dailyIdentity">
                   <span>SELECTED DAY</span>
@@ -616,7 +644,7 @@ export default function Home() {
                 <div className="dailyScore">
                   <Donut value={selectedPct} size={142} />
                   <div>
-                    <b>{selectedPct >= dailyGoal ? "Daily goal reached" : `${dailyGoal - selectedPct}% to daily goal`}</b>
+                    <b>{selectedPct >= DAILY_GOAL ? "Daily goal reached" : `${DAILY_GOAL - selectedPct}% to daily goal`}</b>
                     <span>{selectedPct}% incl. habits · {selectedTaskPct}% tasks</span>
                   </div>
                 </div>
@@ -632,7 +660,10 @@ export default function Home() {
 
               <div className="focusedTaskList">
                 {selectedPlan.tasks.length === 0 && (
-                  <div className="focusedEmpty"><b>No tasks scheduled.</b><span>Add your first task below.</span></div>
+                  <div className="focusedEmpty">
+                    <b>No tasks scheduled.</b>
+                    <span>Add your first task below.</span>
+                  </div>
                 )}
                 {selectedPlan.tasks.map((task) => (
                   <div className={`focusedTaskRow ${task.done ? "complete" : ""}`} key={task.id}>
@@ -679,34 +710,14 @@ export default function Home() {
                 />
                 <button onClick={submitQuickTask}>Add task</button>
               </div>
-
-              <section className="todayHabits">
-                <div className="taskWorkspaceTitle todayHabitsTitle">
-                  <div><span>TODAY&apos;S HABITS</span><b>{selectedStat.habitDone} done · {Math.max(0, selectedStat.habitTotal - selectedStat.habitDone)} left</b></div>
-                  <button onClick={() => setActiveView("dashboard")}>Manage habits</button>
-                </div>
-                <div className="todayHabitList">
-                  {week.habits.map((habit) => {
-                    const weekPct = percent(habit.days.filter(Boolean).length, 7);
-                    return (
-                      <label className={`todayHabitRow ${habit.days[selectedDay] ? "complete" : ""}`} key={habit.id}>
-                        <span className="bigCheck visualCheck"><input type="checkbox" checked={habit.days[selectedDay]} onChange={() => toggleHabit(habit.id, selectedDay)} /><span /></span>
-                        <b>{habit.name}</b>
-                        <span className="habitWeekMini"><i style={{ width: `${weekPct}%` }} /></span>
-                        <em>{weekPct}% week</em>
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
             </article>
 
-            <aside className="insightRail todayRail">
+            <aside className="insightRail">
               <section className="insightCard goalCard">
                 <div className="insightLabel">DAILY GOAL</div>
-                <div className="goalValue"><strong>{selectedPct}%</strong><span>target {dailyGoal}%</span></div>
-                <div className="goalTrack"><i style={{ width: `${Math.min(100, (selectedPct / dailyGoal) * 100)}%` }} /></div>
-                <p>{selectedPct >= dailyGoal ? "Goal cleared for this day." : `${Math.max(0, selectedStat.total - selectedStat.done)} completions still available today.`}</p>
+                <div className="goalValue"><strong>{selectedPct}%</strong><span>target {DAILY_GOAL}%</span></div>
+                <div className="goalTrack"><i style={{ width: `${Math.min(100, (selectedPct / DAILY_GOAL) * 100)}%` }} /></div>
+                <p>{selectedPct >= DAILY_GOAL ? "Goal cleared for this day." : `${Math.max(0, selectedStat.total - selectedStat.done)} completions still available today.`}</p>
               </section>
 
               <section className="insightCard">
@@ -725,207 +736,69 @@ export default function Home() {
                   {upcoming.length === 0 && <p className="railEmpty">No unfinished tasks after {selectedPlan.name}.</p>}
                   {upcoming.map((item) => (
                     <button key={`${item.date}-${item.task.id}`} onClick={() => setSelectedDay(week.days.findIndex((day) => day.date === item.date))}>
-                      <span>{item.day}</span><b>{item.task.label}</b>
+                      <span>{item.day}</span>
+                      <b>{item.task.label}</b>
                     </button>
                   ))}
                 </div>
               </section>
 
               <section className="insightCard">
-                <div className="insightLabel">WEEK SNAPSHOT</div>
+                <div className="insightLabel">WEEK INSIGHT</div>
                 <dl className="insightList">
-                  <div><dt>Overall</dt><dd>{overallPct}%</dd></div>
-                  <div><dt>Goal days</dt><dd>{weekInsight.goalDays}/7</dd></div>
-                  <div><dt>Tasks</dt><dd>{weekInsight.taskDone}/{weekInsight.taskTotal}</dd></div>
-                  <div><dt>Habits</dt><dd>{weekInsight.habitDone}/{weekInsight.habitTotal}</dd></div>
+                  <div><dt>Strongest day</dt><dd>{dayNames[weekInsight.strongestIndex]} · {percent(dayStats[weekInsight.strongestIndex].done, dayStats[weekInsight.strongestIndex].total)}%</dd></div>
+                  <div><dt>Needs attention</dt><dd>{dayNames[weekInsight.weakestIndex]} · {percent(dayStats[weekInsight.weakestIndex].done, dayStats[weekInsight.weakestIndex].total)}%</dd></div>
+                  <div><dt>Most missed habit</dt><dd>{weekInsight.missedHabit?.name ?? "None"}</dd></div>
+                  <div><dt>Tasks</dt><dd>{weekInsight.taskDone}/{weekInsight.taskTotal} done</dd></div>
+                  <div>
+                    <dt>Vs previous week</dt>
+                    <dd>{weekInsight.delta === null ? "No data yet" : `${weekInsight.delta > 0 ? "+" : ""}${weekInsight.delta}%`}</dd>
+                  </div>
                 </dl>
               </section>
             </aside>
           </div>
         </section>
-      )}
+      </section>
 
-      {activeView === "dashboard" && (
-        <section className="sheet appPageSheet">
-          <div className="pageIntro">
-            <div><span>WEEKLY OVERVIEW</span><h2>Dashboard</h2></div>
-            <p>See the week as a whole, manage habits, and spot patterns.</p>
-          </div>
+      <div className="footerLine">
+        <p>Changes save automatically in this browser.</p>
+        <p>Daily goal = {DAILY_GOAL}% · Task = +{XP_PER_TASK} XP · Habit = +{XP_PER_HABIT} XP</p>
+      </div>
 
-          <div className="dashboardRow">
-            <div className="overallPanel">
-              <div className="sectionTitle">Overall Progress</div>
-              <div className="overallBody">
-                <div className="chartWrap">
-                  <div className="chartGrid">{[20, 16, 12, 8, 4, 0].map((n) => <span key={n}>{n}</span>)}</div>
-                  <div className="bars">
-                    {dayStats.map((stat, index) => {
-                      const max = Math.max(20, ...dayStats.map((x) => x.total));
-                      const doneHeight = stat.total ? Math.max(2, (stat.done / max) * 100) : 0;
-                      const totalHeight = stat.total ? Math.max(doneHeight, (stat.total / max) * 100) : 0;
-                      return (
-                        <button
-                          className={`barCol ${selectedDay === index ? "selected" : ""}`}
-                          key={dayShort[index]}
-                          title={`${stat.done}/${stat.total} completed · open ${dayNames[index]}`}
-                          onClick={() => { setSelectedDay(index); setActiveView("today"); }}
-                        >
-                          <div className="barTrack"><div className="barTotal" style={{ height: `${totalHeight}%` }} /><div className="barDone" style={{ height: `${doneHeight}%` }} /></div>
-                          <strong>{dayShort[index]}</strong>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="overallDonut">
-                  <Donut value={overallPct} size={170} />
-                  <div className="completedText">{overallDone} / {overallTotal} completed</div>
-                  <small>{allTime.completed.toLocaleString()} all-time completions</small>
-                </div>
-              </div>
-            </div>
-
-            <div className="habitPanel">
-              <div className="sectionTitle titleWithAction"><span>Habit tracker</span><button onClick={addHabit}>+ habit</button></div>
-              <div className="habitScroll">
-                <div className="habitHeader habitGrid">
-                  <span>Habit</span>{dayShort.map((day) => <span key={day}>{day}</span>)}<span>Progress</span><span aria-hidden="true" />
-                </div>
-                <div className="habitRows">
-                  {week.habits.length === 0 && <div className="emptyState">No habits yet. Add your first habit above.</div>}
-                  {week.habits.map((habit) => {
-                    const completed = habit.days.filter(Boolean).length;
-                    const pct = percent(completed, 7);
-                    return (
-                      <div className="habitGrid habitRow" key={habit.id}>
-                        <input className="inlineText habitName" value={habit.name} onChange={(e) => renameHabit(habit.id, e.target.value)} aria-label="Habit name" />
-                        {habit.days.map((checked, index) => (
-                          <label className="tinyCheck" key={index} title={`${habit.name} on ${dayNames[index]}`}>
-                            <input type="checkbox" checked={checked} onChange={() => toggleHabit(habit.id, index)} /><span />
-                          </label>
-                        ))}
-                        <div className="progressCell"><div className="progressBar"><i style={{ width: `${pct}%` }} /></div><b>{pct}%</b></div>
-                        <button className="deleteRowBtn" onClick={() => deleteHabit(habit.id)} title="Delete habit" aria-label={`Delete ${habit.name}`}>×</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="dashboardSummaryGrid">
-            <section className="summaryMetric"><span>WEEK COMPLETION</span><b>{overallPct}%</b><p>{overallDone} of {overallTotal} total completions</p></section>
-            <section className="summaryMetric"><span>GOAL DAYS</span><b>{weekInsight.goalDays}/7</b><p>Days reaching your {dailyGoal}% target</p></section>
-            <section className="summaryMetric"><span>TASKS</span><b>{weekInsight.taskDone}/{weekInsight.taskTotal}</b><p>{percent(weekInsight.taskDone, weekInsight.taskTotal)}% of weekly tasks finished</p></section>
-            <section className="summaryMetric"><span>HABITS</span><b>{weekInsight.habitDone}/{weekInsight.habitTotal}</b><p>{percent(weekInsight.habitDone, weekInsight.habitTotal)}% of habit checks finished</p></section>
-          </div>
-
-          <div className="dashboardInsightGrid">
-            <section className="insightCard">
-              <div className="insightLabel">WEEK INSIGHT</div>
-              <dl className="insightList spaciousInsightList">
-                <div><dt>Strongest day</dt><dd>{dayNames[weekInsight.strongestIndex]} · {percent(dayStats[weekInsight.strongestIndex].done, dayStats[weekInsight.strongestIndex].total)}%</dd></div>
-                <div><dt>Needs attention</dt><dd>{dayNames[weekInsight.weakestIndex]} · {percent(dayStats[weekInsight.weakestIndex].done, dayStats[weekInsight.weakestIndex].total)}%</dd></div>
-                <div><dt>Most missed habit</dt><dd>{weekInsight.missedHabit?.name ?? "None"}</dd></div>
-                <div><dt>Vs previous week</dt><dd>{weekInsight.delta === null ? "No data yet" : `${weekInsight.delta > 0 ? "+" : ""}${weekInsight.delta}%`}</dd></div>
-              </dl>
-            </section>
-            <section className="insightCard dashboardGameCard">
-              <div className="insightLabel">GAME PROGRESS</div>
-              <div className="gameProgressHero"><div><span>LEVEL</span><b>{allTime.level}</b></div><div><span>TOTAL XP</span><b>{allTime.xp.toLocaleString()}</b></div><div><span>STREAK</span><b>{allTime.currentStreak}d</b></div></div>
-              <div className="goalTrack"><i style={{ width: `${percent(allTime.levelXp, XP_PER_LEVEL)}%` }} /></div>
-              <p>{XP_PER_LEVEL - allTime.levelXp} XP until level {allTime.level + 1}. Tasks earn {XP_PER_TASK} XP; habits earn {XP_PER_HABIT} XP.</p>
-            </section>
-          </div>
-        </section>
-      )}
-
-      {activeView === "history" && (
-        <section className="sheet appPageSheet">
-          <div className="pageIntro">
-            <div><span>PAST WEEKS</span><h2>History</h2></div>
-            <p>Review saved weeks and jump back into any week without losing your current data.</p>
-          </div>
-          <div className="historyPageGrid">
-            {history.map((item) => (
-              <article className={`historyCard ${item.key === currentWeekKey ? "current" : ""}`} key={item.key}>
-                <div className="historyCardTop">
-                  <div><span>WEEK {getISOWeekNumber(item.key)}{item.key === currentWeekKey ? " · CURRENT" : ""}</span><h3>{formatWeekRange(item.key)}</h3></div>
-                  <Donut value={item.pct} size={92} />
-                </div>
-                <div className="historyCardStats"><span><b>{item.done}</b> completed</span><span><b>{item.total}</b> available</span></div>
-                <div className="historyCardProgress"><i style={{ width: `${item.pct}%` }} /></div>
-                <button onClick={() => openHistoryWeek(item.key)}>Open dashboard</button>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {activeView === "settings" && (
-        <section className="sheet appPageSheet">
-          <div className="pageIntro">
-            <div><span>APP PREFERENCES</span><h2>Settings</h2></div>
-            <p>Control your daily target, local data, and planner defaults before cloud sync is added.</p>
-          </div>
-
-          <div className="settingsGrid">
-            <section className="settingsCard">
-              <div className="settingsHeading"><span>DAILY TARGET</span><h3>Completion goal</h3></div>
-              <p>A day counts toward your streak once combined task + habit completion reaches this target.</p>
-              <div className="goalSettingValue"><b>{dailyGoal}%</b><span>recommended: 70–90%</span></div>
-              <input className="goalRange" type="range" min="50" max="100" step="5" value={dailyGoal} onChange={(e) => updateDailyGoal(Number(e.target.value))} />
-              <div className="rangeLabels"><span>50%</span><span>100%</span></div>
-            </section>
-
-            <section className="settingsCard">
-              <div className="settingsHeading"><span>GAME RULES</span><h3>XP system</h3></div>
-              <div className="settingsRows">
-                <div><span>Completed task</span><b>+{XP_PER_TASK} XP</b></div>
-                <div><span>Completed habit</span><b>+{XP_PER_HABIT} XP</b></div>
-                <div><span>Level interval</span><b>{XP_PER_LEVEL} XP</b></div>
-                <div><span>Current level</span><b>{allTime.level}</b></div>
-              </div>
-            </section>
-
-            <section className="settingsCard settingsWide">
-              <div className="settingsHeading"><span>HABIT MANAGEMENT</span><h3>Current week&apos;s habits</h3></div>
-              <div className="settingsHabitList">
-                {week.habits.map((habit) => (
-                  <div key={habit.id}><input value={habit.name} onChange={(e) => renameHabit(habit.id, e.target.value)} /><button onClick={() => deleteHabit(habit.id)}>Remove</button></div>
-                ))}
-              </div>
-              <button className="solidAction" onClick={addHabit}>+ Add habit</button>
-            </section>
-
-            <section className="settingsCard">
-              <div className="settingsHeading"><span>LOCAL DATA</span><h3>Backup & reset</h3></div>
-              <p>Your current version saves data in this browser. Download a JSON backup before major changes.</p>
-              <div className="settingsActions"><button className="solidAction" onClick={exportBackup}>Download backup</button><button className="outlineAction" onClick={resetCurrentWeek}>Reset this week</button></div>
-            </section>
-
-            <section className="settingsCard">
-              <div className="settingsHeading"><span>DEMO / DEVELOPMENT</span><h3>Preview data</h3></div>
-              <p>Reload the current week with the same sample data used in the design preview.</p>
-              <button className="outlineAction" onClick={loadDemoWeek}>Load demo week</button>
-            </section>
-
-            <section className="settingsCard settingsWide cloudCard">
+      {historyOpen && (
+        <div className="modalBackdrop" role="presentation" onMouseDown={() => setHistoryOpen(false)}>
+          <section className="historyModal" role="dialog" aria-modal="true" aria-labelledby="history-title" onMouseDown={(e) => e.stopPropagation()}>
+            <header>
               <div>
-                <div className="settingsHeading"><span>SYNC STATUS</span><h3>Local-only mode</h3></div>
-                <p>Login and cross-device cloud sync are intentionally not connected yet. The next backend phase can add Supabase without changing this navigation structure.</p>
+                <span>SAVED WEEKS</span>
+                <h2 id="history-title">Planner history</h2>
               </div>
-              <div className="statusBadge">LOCAL STORAGE</div>
-            </section>
-          </div>
-        </section>
+              <button onClick={() => setHistoryOpen(false)} aria-label="Close history">×</button>
+            </header>
+            <div className="historyList">
+              {history.map((item) => (
+                <button
+                  className={`historyItem ${item.key === currentWeekKey ? "selected" : ""}`}
+                  key={item.key}
+                  onClick={() => { setCurrentWeekKey(item.key); setHistoryOpen(false); }}
+                >
+                  <div>
+                    <b>Week {getISOWeekNumber(item.key)}</b>
+                    <span>{formatWeekRange(item.key)}</span>
+                  </div>
+                  <div className="historyProgress">
+                    <div><i style={{ width: `${item.pct}%` }} /></div>
+                    <strong>{item.pct}%</strong>
+                    <span>{item.done}/{item.total}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <footer>Opening a new week automatically adds it to your local history.</footer>
+          </section>
+        </div>
       )}
-
-      <footer className="footerLine">
-        <p>Weekly Planner v4 · local-first preview</p>
-        <p>Tasks + habits drive progress, XP and streaks.</p>
-      </footer>
     </main>
   );
 }

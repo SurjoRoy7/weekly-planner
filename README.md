@@ -1,22 +1,17 @@
-# Weekly Planner — Focus Workspace Edition
+# Weekly Planner v4
 
-A Next.js weekly planner inspired by a monochrome spreadsheet dashboard, redesigned to remove the repetitive seven-column task section and replace it with a focused daily workspace.
+A local-first, gamified weekly planner rebuilt as a real multi-view app while keeping the monochrome spreadsheet-inspired visual style.
 
-## What changed in this version
+## Views
 
-- Replaced seven full daily task cards with a compact Monday–Sunday day selector.
-- Added a large selected-day workspace with one task list at a time.
-- Overall chart bars are now clickable and open that day.
-- Added quick task entry: type a task and press Enter.
-- Added task priority: High, Medium, Normal.
-- Added task categories: General, Work, Study, Health, Personal, Errand.
-- Added an 80% daily goal indicator.
-- Added current goal streak and best goal streak.
-- Added level progress and XP-to-next-level information.
-- Added upcoming unfinished tasks from later in the week.
-- Added weekly insights: strongest day, day needing attention, most missed habit, task completion, and comparison with the previous saved week.
-- Kept week history, local browser saving, editable habits, and PWA files.
-- Existing v2 localStorage data remains compatible; older tasks simply default to General / Normal when shown.
+- Today — focused task + habit workspace with day tabs, daily goal, XP and upcoming tasks
+- Dashboard — weekly progress chart, habit matrix, weekly summary and insights
+- History — saved week cards with completion progress and jump-back navigation
+- Settings — daily goal control, XP rules, habit management, JSON backup and demo/reset tools
+
+## Data
+
+The app keeps using the existing `weekly-planner-game-v2` localStorage key, so upgrading the same Vercel deployment in the same browser preserves v2/v3 planner data. A new optional settings object is added without changing the saved week structure.
 
 ## Run locally
 
@@ -25,12 +20,12 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:3000`.
+Open `http://localhost:3000`.
 
 ## Deploy to Vercel
 
-Import the repository into Vercel. The framework should be detected as Next.js automatically. No environment variables are required for this local-storage version.
+Replace the project files in the existing GitHub repository with this version and commit to `main`. The existing Vercel project should redeploy automatically. No environment variables are required for this local-only preview.
 
-## Storage
+## Next backend phase
 
-Planner data is stored in the browser using `localStorage` under `weekly-planner-game-v2`. It does not sync across devices yet.
+Supabase authentication + database sync can be added after the UI is approved. Until then, data remains browser-local.
